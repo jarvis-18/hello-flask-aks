@@ -2,7 +2,8 @@ name: Build & Deploy to AKS (ACR → AKS)
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 env:
   ACR_NAME: ${{ secrets.ACR_NAME }}
@@ -30,14 +31,14 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Docker login to ACR
-        run: az acr login -n $ACR_NAME
+        run: az acr login -n "$ACR_NAME"
 
       - name: Compute image ref
         id: meta
         run: |
           IMAGE_FQN="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
-          echo "IMAGE_FQN=${IMAGE_FQN}" >> $GITHUB_ENV
-          echo "image_fqn=${IMAGE_FQN}" >> $GITHUB_OUTPUT
+          echo "IMAGE_FQN=${IMAGE_FQN}" >> "$GITHUB_ENV"
+          echo "image_fqn=${IMAGE_FQN}" >> "$GITHUB_OUTPUT"
           echo "Computed IMAGE_FQN=${IMAGE_FQN}"
 
       - name: Build & Push
@@ -71,12 +72,3 @@ jobs:
         run: echo "Using image: ${{ needs.build-and-push.outputs.image_fqn }}"
 
       - name: Deploy to AKS
-        uses: azure/k8s-deploy@v5
-        with:
-          namespace: ${{ env.K8S_NAMESPACE }}
-          manifests: |
-            k8s/deployment.yaml
-            k8s/service.yaml
-          images: |
-            ${{ needs.build-and-push.outputs.image_fqn }}
-          strategy: basic
