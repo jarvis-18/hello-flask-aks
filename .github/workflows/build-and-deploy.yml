@@ -18,6 +18,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      image_fqn: ${{ steps.meta.outputs.image_fqn }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,16 +33,21 @@ jobs:
         run: |
           az acr login -n $ACR_NAME
 
+      - name: Compute image ref
+        id: meta
+        run: |
+          IMAGE_FQN="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "IMAGE_FQN=${IMAGE_FQN}" >> $GITHUB_ENV
+          echo "image_fqn=${IMAGE_FQN}" >> $GITHUB_OUTPUT
+
       - name: Build & Push
         run: |
-          IMAGE_FQN=$ACR_NAME.azurecr.io/$IMAGE_NAME:${IMAGE_TAG}
-          echo "IMAGE_FQN=$IMAGE_FQN" >> $GITHUB_ENV
-          docker build -t $IMAGE_FQN .
-          docker push $IMAGE_FQN
+          docker build -t "${IMAGE_FQN}" .
+          docker push "${IMAGE_FQN}"
 
       - name: Publish image reference
         run: |
-          echo "Built and pushed $IMAGE_FQN"
+          echo "Built and pushed ${IMAGE_FQN}"
 
   deploy:
     needs: build-and-push
@@ -60,10 +67,7 @@ jobs:
           resource-group: ${{ env.AKS_RG }}
           cluster-name: ${{ env.AKS_NAME }}
 
-      - name: Render manifests with image tag
-        run: |
-          sed -i "s|tejasacrdemo.azurecr.io/hello-flask:REPLACE_ME|${IMAGE_FQN}|g" k8s/deployment.yaml
-
+      # No sed needed — k8s-deploy will patch the image before apply
       - name: Deploy to AKS
         uses: azure/k8s-deploy@v5
         with:
@@ -72,5 +76,5 @@ jobs:
             k8s/deployment.yaml
             k8s/service.yaml
           images: |
-            ${{ env.IMAGE_FQN }}
+            ${{ needs.build-and-push.outputs.image_fqn }}
           strategy: basic
