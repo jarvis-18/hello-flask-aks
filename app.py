@@ -3,6 +3,10 @@ import os
 
 app = Flask(__name__)
 
+@app.route("/health")
+def health():
+    return "ok", 200
+
 @app.route("/")
 def index():
     return "Hello from Flask on AKS via ACR build! 🎉"
