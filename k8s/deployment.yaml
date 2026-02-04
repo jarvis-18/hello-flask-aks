@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: hello-flask
+  labels:
+    app: hello-flask
 spec:
   replicas: 2
   selector:
@@ -12,11 +14,13 @@ spec:
       labels:
         app: hello-flask
     spec:
-      imagePullSecrets:
-        - name: acr-secret   
+      # REMOVE imagePullSecrets when using AKS managed identity + --attach-acr
+      # imagePullSecrets:
+      #   - name: acr-secret
       containers:
         - name: hello-flask
-          image: tejasacrdemo.azurecr.io/hello-flask:latest
+          # Placeholder image; the pipeline will patch this with v<run_number>
+          image: tejasacrdemo.azurecr.io/hello-flask:placeholder
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
