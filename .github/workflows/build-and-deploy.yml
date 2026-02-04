@@ -39,8 +39,11 @@ jobs:
         id: meta
         shell: bash
         run: |
+          set -euo pipefail
           IMAGE_FQN="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
+          # Export to job env (optional but handy)
           echo "IMAGE_FQN=${IMAGE_FQN}" >> "$GITHUB_ENV"
+          # Export to job outputs (this is what the deploy job consumes)
           echo "image_fqn=${IMAGE_FQN}" >> "$GITHUB_OUTPUT"
           echo "Computed IMAGE_FQN=${IMAGE_FQN}"
 
