@@ -17,7 +17,7 @@ spec:
       containers:
         - name: hello-flask
           # The GitHub Action will replace this with your pushed image
-          image: tejasacrdemo.azurecr.io/hello-flask:REPLACE_ME
+          image: tejasacrdemo.azurecr.io/hello-flask:v7
           ports:
             - containerPort: 8080
           readinessProbe:
