@@ -1,32 +1,18 @@
-# Use a small, secure base
+# Use a small Python base image
 FROM python:3.11-slim
 
-# Ensure no prompts during install
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
-
-# Install security updates & runtime deps
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    ca-certificates curl && \
-    rm -rf /var/lib/apt/lists/*
-
-# Create app dir
+# Set working directory
 WORKDIR /app
 
-# Install deps first (better layer caching)
+# Copy and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app
+# Copy the Flask app
 COPY app.py .
 
-# Non-root user for security
-RUN useradd -m appuser
-USER appuser
-
-# App listens on 8080
+# Expose the port your Flask app listens on
 EXPOSE 8080
 
-# Use gunicorn for production
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]
+# Run the Flask app
+CMD ["python", "app.py"]
