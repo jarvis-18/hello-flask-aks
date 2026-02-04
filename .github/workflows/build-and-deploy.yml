@@ -1,4 +1,4 @@
-name: Build & Deploy to AKS (ACR → AKS)
+name: Build and Deploy to AKS (ACR to AKS)
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
           echo "image_fqn=${IMAGE_FQN}" >> "$GITHUB_OUTPUT"
           echo "Computed IMAGE_FQN=${IMAGE_FQN}"
 
-      - name: Build & Push
+      - name: Build and Push
         run: |
           if [ -z "${IMAGE_FQN}" ]; then echo "IMAGE_FQN is empty"; exit 1; fi
           docker build -t "${IMAGE_FQN}" .
@@ -72,3 +72,12 @@ jobs:
         run: echo "Using image: ${{ needs.build-and-push.outputs.image_fqn }}"
 
       - name: Deploy to AKS
+        uses: azure/k8s-deploy@v5
+        with:
+          namespace: ${{ env.K8S_NAMESPACE }}
+          manifests: |
+            k8s/deployment.yaml
+            k8s/service.yaml
+          images: |
+            ${{ needs.build-and-push.outputs.image_fqn }}
+          strategy: basic
