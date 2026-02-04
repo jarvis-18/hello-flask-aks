@@ -1,0 +1,76 @@
+name: Build & Deploy to AKS (ACR → AKS)
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  ACR_NAME: ${{ secrets.ACR_NAME }}
+  IMAGE_NAME: hello-flask
+  IMAGE_TAG: v${{ github.run_number }}
+  AKS_RG: rg-aks-demo
+  AKS_NAME: aks-hello-flask
+  K8S_NAMESPACE: default
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (Service Principal)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Docker login to ACR
+        run: |
+          az acr login -n $ACR_NAME
+
+      - name: Build & Push
+        run: |
+          IMAGE_FQN=$ACR_NAME.azurecr.io/$IMAGE_NAME:${IMAGE_TAG}
+          echo "IMAGE_FQN=$IMAGE_FQN" >> $GITHUB_ENV
+          docker build -t $IMAGE_FQN .
+          docker push $IMAGE_FQN
+
+      - name: Publish image reference
+        run: |
+          echo "Built and pushed $IMAGE_FQN"
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for k8s manifests)
+        uses: actions/checkout@v4
+
+      - name: Azure login (Service Principal)
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ env.AKS_RG }}
+          cluster-name: ${{ env.AKS_NAME }}
+
+      - name: Render manifests with image tag
+        run: |
+          sed -i "s|tejasacrdemo.azurecr.io/hello-flask:REPLACE_ME|${IMAGE_FQN}|g" k8s/deployment.yaml
+
+      - name: Deploy to AKS
+        uses: azure/k8s-deploy@v5
+        with:
+          namespace: ${{ env.K8S_NAMESPACE }}
+          manifests: |
+            k8s/deployment.yaml
+            k8s/service.yaml
+          images: |
+            ${{ env.IMAGE_FQN }}
+          strategy: basic
