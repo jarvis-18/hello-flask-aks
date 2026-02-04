@@ -30,8 +30,7 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Docker login to ACR
-        run: |
-          az acr login -n $ACR_NAME
+        run: az acr login -n $ACR_NAME
 
       - name: Compute image ref
         id: meta
@@ -39,15 +38,16 @@ jobs:
           IMAGE_FQN="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "IMAGE_FQN=${IMAGE_FQN}" >> $GITHUB_ENV
           echo "image_fqn=${IMAGE_FQN}" >> $GITHUB_OUTPUT
+          echo "Computed IMAGE_FQN=${IMAGE_FQN}"
 
       - name: Build & Push
         run: |
+          if [ -z "${IMAGE_FQN}" ]; then echo "IMAGE_FQN is empty"; exit 1; fi
           docker build -t "${IMAGE_FQN}" .
           docker push "${IMAGE_FQN}"
 
       - name: Publish image reference
-        run: |
-          echo "Built and pushed ${IMAGE_FQN}"
+        run: echo "Built and pushed ${IMAGE_FQN}"
 
   deploy:
     needs: build-and-push
@@ -67,7 +67,9 @@ jobs:
           resource-group: ${{ env.AKS_RG }}
           cluster-name: ${{ env.AKS_NAME }}
 
-      # No sed needed — k8s-deploy will patch the image before apply
+      - name: Debug image output
+        run: echo "Using image: ${{ needs.build-and-push.outputs.image_fqn }}"
+
       - name: Deploy to AKS
         uses: azure/k8s-deploy@v5
         with:
