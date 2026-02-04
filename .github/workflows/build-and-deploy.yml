@@ -69,7 +69,8 @@ jobs:
           cluster-name: ${{ env.AKS_NAME }}
 
       - name: Debug image output
-        run: echo "Using image: ${{ needs.build-and-push.outputs.image_fqn }}"
+        run: |
+          echo "Using image: ${{ needs.build-and-push.outputs.image_fqn }}"
 
       - name: Deploy to AKS
         uses: azure/k8s-deploy@v5
