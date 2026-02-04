@@ -6,9 +6,10 @@ on:
       - main
 
 env:
+  # ---- Configure these ----
   ACR_NAME: ${{ secrets.ACR_NAME }}      # e.g., tejasacrdemo
   IMAGE_NAME: hello-flask
-  IMAGE_TAG: v${{ github.run_number }}   # unique tag per run
+  IMAGE_TAG: v${{ github.run_number }}   # unique, immutable tag per run
   AKS_RG: rg-aks-demo
   AKS_NAME: aks-hello-flask
   K8S_NAMESPACE: default
@@ -36,6 +37,7 @@ jobs:
 
       - name: Compute image ref
         id: meta
+        shell: bash
         run: |
           IMAGE_FQN="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "IMAGE_FQN=${IMAGE_FQN}" >> "$GITHUB_ENV"
@@ -43,12 +45,14 @@ jobs:
           echo "Computed IMAGE_FQN=${IMAGE_FQN}"
 
       - name: Build and Push (tag with run number)
+        shell: bash
         run: |
           docker build -t "${IMAGE_FQN}" .
           docker push "${IMAGE_FQN}"
 
-      # OPTIONAL: also push 'latest' if you really want it available
+      # OPTIONAL: also tag/push 'latest' if your policy requires it
       # - name: Also tag and push 'latest'
+      #   shell: bash
       #   run: |
       #     docker tag "${IMAGE_FQN}" "${ACR_NAME}.azurecr.io/${IMAGE_NAME}:latest"
       #     docker push "${ACR_NAME}.azurecr.io/${IMAGE_NAME}:latest"
@@ -76,11 +80,12 @@ jobs:
           cluster-name: ${{ env.AKS_NAME }}
 
       - name: Verify image FQN from build job
+        shell: bash
         run: |
           echo "Using image: ${{ needs.build-and-push.outputs.image_fqn }}"
           test -n "${{ needs.build-and-push.outputs.image_fqn }}"
 
-      # Apply manifests and let the action patch the image in-place
+      # Apply manifests and let the action patch the image to the built tag
       - name: Deploy to AKS (apply + patch)
         uses: azure/k8s-deploy@v5
         with:
@@ -94,6 +99,7 @@ jobs:
 
       # Bullet-proof: explicitly set the image and wait for rollout
       - name: Force set image on Deployment and wait for rollout
+        shell: bash
         run: |
           kubectl set image deployment/hello-flask \
             hello-flask=${{ needs.build-and-push.outputs.image_fqn }} \
@@ -102,6 +108,7 @@ jobs:
 
       # Diagnostics
       - name: Show running image on Deployment
+        shell: bash
         run: |
           echo -n "Deployment image: "
           kubectl get deploy hello-flask -n ${{ env.K8S_NAMESPACE }} \
