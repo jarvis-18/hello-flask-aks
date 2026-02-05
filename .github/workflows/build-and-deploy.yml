@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  # Set once for your environment
+  # Configure once for your environment
   ACR_NAME: ${{ secrets.ACR_NAME }}           # e.g., tejasacrdemo
   IMAGE_NAME: hello-flask
   IMAGE_TAG: v${{ github.run_number }}        # unique tag per run
@@ -33,11 +33,10 @@ jobs:
       - name: Docker login to ACR
         run: az acr login -n "$ACR_NAME"
 
-      # Enable multi-arch emulation
+      # Enable multi-arch emulation and Buildx
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # Enable Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -52,12 +51,26 @@ jobs:
 
       # Build specifically for your AKS nodes (amd64). Fastest and sufficient.
       - name: Build and Push (linux/amd64)
+        shell: bash
         run: |
+          set -euo pipefail
           docker buildx build \
             --platform linux/amd64 \
             -t "${IMAGE_FQN}" \
             --push \
             .
+
+      # Fail fast if the pushed tag doesn't include linux/amd64
+      - name: Inspect pushed image manifest (ensure amd64 exists)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Inspecting manifest for ${IMAGE_FQN}"
+          docker buildx imagetools inspect "${IMAGE_FQN}"
+          docker buildx imagetools inspect "${IMAGE_FQN}" | grep -q 'linux/amd64' || {
+            echo "::error::Pushed image does NOT include linux/amd64. Aborting.";
+            exit 1;
+          }
 
       - name: Publish image reference
         run: echo "Built and pushed ${IMAGE_FQN}"
@@ -81,7 +94,18 @@ jobs:
           resource-group: ${{ env.AKS_RG }}
           cluster-name: ${{ env.AKS_NAME }}
 
-      # Recompute image FQN here (avoid secret-masked cross-job outputs)
+      # We need Docker auth to ACR for imagetools in this job, too
+      - name: Docker login to ACR (deploy job)
+        run: az acr login -n "$ACR_NAME"
+
+      # Enable Buildx in deploy job so imagetools works here as well
+      - name: Set up QEMU (deploy job)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx (deploy job)
+        uses: docker/setup-buildx-action@v3
+
+      # Recompute image FQN in this job (avoid cross-job masked outputs)
       - name: Compute image ref in deploy job
         id: meta2
         shell: bash
@@ -89,9 +113,21 @@ jobs:
           set -euo pipefail
           IMAGE_FQN="${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "image_fqn=${IMAGE_FQN}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_FQN=${IMAGE_FQN}" >> "$GITHUB_ENV"
           echo "Deploying image: ${IMAGE_FQN}"
 
-      # Apply manifests; k8s-deploy will also patch image with the value above
+      # Verify the pushed manifest again BEFORE deployment
+      - name: Verify image manifest before deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "${IMAGE_FQN}"
+          docker buildx imagetools inspect "${IMAGE_FQN}" | grep -q 'linux/amd64' || {
+            echo "::error::Image manifest for ${IMAGE_FQN} does NOT include linux/amd64. Aborting deploy.";
+            exit 1;
+          }
+
+      # Apply manifests; k8s-deploy will patch the image to the value above
       - name: Deploy to AKS (apply + patch)
         uses: azure/k8s-deploy@v5
         with:
