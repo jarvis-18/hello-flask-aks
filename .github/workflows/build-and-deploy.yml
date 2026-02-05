@@ -6,9 +6,7 @@ on:
       - main
 
 env:
-  # IMPORTANT:
-  # If you keep ACR_NAME in secrets, don't try to pass an image FQN through outputs.
-  # Instead, recompute it in each job (as we do below).
+  # Set once for your environment
   ACR_NAME: ${{ secrets.ACR_NAME }}           # e.g., tejasacrdemo
   IMAGE_NAME: hello-flask
   IMAGE_TAG: v${{ github.run_number }}        # unique tag per run
@@ -35,6 +33,14 @@ jobs:
       - name: Docker login to ACR
         run: az acr login -n "$ACR_NAME"
 
+      # Enable multi-arch emulation
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # Enable Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Compute image ref
         id: meta
         shell: bash
@@ -44,12 +50,14 @@ jobs:
           echo "Computed IMAGE_FQN=${IMAGE_FQN}"
           echo "IMAGE_FQN=${IMAGE_FQN}" >> "$GITHUB_ENV"
 
-      - name: Build and Push
-        shell: bash
+      # Build specifically for your AKS nodes (amd64). Fastest and sufficient.
+      - name: Build and Push (linux/amd64)
         run: |
-          set -euo pipefail
-          docker build -t "${IMAGE_FQN}" .
-          docker push "${IMAGE_FQN}"
+          docker buildx build \
+            --platform linux/amd64 \
+            -t "${IMAGE_FQN}" \
+            --push \
+            .
 
       - name: Publish image reference
         run: echo "Built and pushed ${IMAGE_FQN}"
@@ -73,7 +81,7 @@ jobs:
           resource-group: ${{ env.AKS_RG }}
           cluster-name: ${{ env.AKS_NAME }}
 
-      # Recompute image FQN locally in this job (avoid secret-masked outputs)
+      # Recompute image FQN here (avoid secret-masked cross-job outputs)
       - name: Compute image ref in deploy job
         id: meta2
         shell: bash
@@ -83,7 +91,7 @@ jobs:
           echo "image_fqn=${IMAGE_FQN}" >> "$GITHUB_OUTPUT"
           echo "Deploying image: ${IMAGE_FQN}"
 
-      # Apply manifests; k8s-deploy will patch the image in the manifest
+      # Apply manifests; k8s-deploy will also patch image with the value above
       - name: Deploy to AKS (apply + patch)
         uses: azure/k8s-deploy@v5
         with:
@@ -105,7 +113,7 @@ jobs:
             -n ${{ env.K8S_NAMESPACE }}
           kubectl rollout status deployment/hello-flask -n ${{ env.K8S_NAMESPACE }}
 
-      # Optional diagnostics
+      # Diagnostics: show the live image used by the Deployment
       - name: Show running image on Deployment
         run: |
           echo -n "Deployment image: "
